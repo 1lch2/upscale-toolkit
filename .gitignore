@@ -1,0 +1,30 @@
+# Python 虚拟环境与缓存
+.venv/
+.ci-venv/
+venv/
+.cache/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 构建、交付与验收产物
+build/
+dist/
+artifacts/
+*.zip
+
+# 依赖许可正文在构建时收集，仓库只维护索引
+licenses/*
+!licenses/README.md
+
+# 本地模型权重
+model/*.pth
+model/*.pt
+model/*.safetensors
+
+# 日志与 Windows 临时文件
+*.log
+Thumbs.db
+Desktop.ini

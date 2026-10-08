@@ -1,0 +1,84 @@
+name: Windows CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runtime:
+        description: 'Torch runtime to build (CUDA package is tested using CPU inference)'
+        type: choice
+        options: [cpu, cu130, both]
+        default: cpu
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows x64 / ${{ matrix.runtime }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || inputs.runtime == 'both') && '["cpu","cu130"]' || inputs.runtime == 'cu130' && '["cu130"]' || '["cpu"]') }}
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: '1'
+      PYTHONDONTWRITEBYTECODE: '1'
+      PIP_DISABLE_PIP_VERSION_CHECK: '1'
+      BUILD_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+          architecture: x64
+
+      - name: Install build environment
+        run: ./tools/setup_environment.ps1 -Python python -Runtime '${{ matrix.runtime }}'
+
+      - name: Generate test-only architecture weights
+        run: |
+          & ./.venv/Scripts/python.exe -B ./tools/create_ci_models.py --output ./build/ci-models
+          if ($LASTEXITCODE -ne 0) { throw 'Fixture generation failed' }
+
+      - name: Build, exercise source and EXE, package and verify ZIP
+        run: ./build.ps1 -Runtime '${{ matrix.runtime }}' -Release -Verify -TestModelDir ./build/ci-models -Tag $env:BUILD_TAG
+
+      - name: Upload portable package and checksums
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: UpscaleToolkit-windows-x64-${{ matrix.runtime }}
+          path: |
+            dist/${{ matrix.runtime }}/*.zip
+            dist/${{ matrix.runtime }}/*.sha256
+            dist/${{ matrix.runtime }}/release.json
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload acceptance reports and build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: acceptance-${{ matrix.runtime }}
+          path: |
+            artifacts/**/*.json
+            artifacts/**/*.log
+            build/${{ matrix.runtime }}/metadata/*.json
+            build/${{ matrix.runtime }}/pyinstaller/UpscaleToolkit/warn-*.txt
+          if-no-files-found: warn
+          retention-days: 7

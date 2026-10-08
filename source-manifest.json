@@ -1,0 +1,32 @@
+{
+  "modules/images.py": {
+    "sha256": "7a3ea966a62a1b57191f336f08d172b3a7d795a3c0cbeba46077dd54edaaa326",
+    "symbols": [
+      "Grid",
+      "split_grid",
+      "combine_grid"
+    ]
+  },
+  "modules/upscaler_utils.py": {
+    "sha256": "0d43eeb4460f50d95486529143de567dd3a5be592fcfa522d87655ccb9b8a390",
+    "symbols": [
+      "pil_image_to_torch_bgr",
+      "torch_bgr_to_pil_image"
+    ]
+  },
+  "modules/upscaler.py": {
+    "sha256": "96550f35ae02068d335c01ac4f37f7e4362cce3e41d232b21e196a263751046b"
+  },
+  "modules/modelloader.py": {
+    "sha256": "ea3f25086b426da60a3626b75754806811e25999ed832cb9c5310975b8e434a0"
+  },
+  "backend/utils.py": {
+    "sha256": "e51abce42e9386c4a1a3db12f034bff801e10079223b8995607d96b125b21e53"
+  },
+  "scripts/postprocessing_upscale.py": {
+    "sha256": "40da7bd403dfab540b4563ecf884f714fafcf1ef3a2fcbd783410a0679bdaf60"
+  },
+  "modules/postprocessing.py": {
+    "sha256": "bfdbff5487819f229e5ae18ea1f7e0973a76eaedae0867a9c230bce0b9f2bd1e"
+  }
+}

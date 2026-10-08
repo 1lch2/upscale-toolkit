@@ -1,0 +1,3 @@
+# Install from the explicit CPU or cu130 PyTorch index before requirements-lock.txt.
+torch==2.13.0
+torchvision==0.28.0
