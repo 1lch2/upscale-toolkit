@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from release_support import ROOT, app_version
+from release_support import ROOT, app_version, write_tag_version
 
 
 def run(*arguments, environment=None):
@@ -25,9 +25,7 @@ def main():
     args = parser.parse_args()
     if sys.platform != 'win32':
         raise RuntimeError('Windows builds must run on Windows')
-    version = app_version()
-    if args.tag and args.tag != f'v{version}':
-        raise ValueError(f'Tag {args.tag} does not match application version v{version}')
+    version = write_tag_version(args.tag) if args.tag else app_version()
     import torch
     runtime = 'cpu' if torch.version.cuda is None else 'cu130' if torch.version.cuda == '13.0' else None
     if runtime is None or (args.runtime != 'auto' and args.runtime != runtime):

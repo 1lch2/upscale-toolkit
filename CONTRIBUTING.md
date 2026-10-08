@@ -20,7 +20,9 @@ pwsh -NoProfile -File ./build.ps1 -Runtime cpu -Release -Verify -TestModelDir ./
 
 该命令需要 CUDA 构建环境与项目 `model` 内的真实权重。`core_acceptance.py` 是依赖 Forge 源码和 tqdm 的原函数参考验收，属于迁移/核心改动验证，不纳入独立的公开 CI。
 
-版本号只维护 `upscale_toolkit/__init__.py` 的 `__version__`。`v*` 标签必须与其一致，工作流会检查并构建 CPU 与 cu130 两种产物。PR/普通 push 只构建 CPU；手动 workflow 可选择 CPU、cu130 或两者。工作流上传 Actions artifacts，不创建或发布 GitHub Release。正式发版前，应另外完成真实模型的质量和对应 GPU 运行验收。
+发行版本由 Git tag 决定，采用可带 `v` 前缀的语义化版本，例如 `v1.2.3` 或 `v1.3.0-rc.1`。构建生成 `upscale_toolkit/_version.py`，由应用与打包工具共同读取；该文件加入源码交付包，但被 Git 忽略。无需手动修改 `__version__`。本地可使用 `build.ps1 -Tag v1.2.3`；未提供 tag 时沿用已有生成版本，没有生成版本则使用开发版本 `0.0.0.dev0`。
+
+工作流只响应 tag push，不响应分支 push、PR 或手动运行。推送版本 tag 后构建 CPU 与 cu130，两者成功才发布该 tag 对应的 Release；预发布版本标为 Pre-release。发布附件包含 ZIP、SHA-256 和分别命名的构建记录。上传失败留下草稿，重跑会补齐附件后发布；已发布的 tag 直接跳过。仅发布任务拥有 `contents: write` 权限，使用内置 `GITHUB_TOKEN`。自动发布不代表真实模型质量和 GPU 路径已通过验收，这两项需另行验证。
 
 GitHub 托管 Windows runner 上的 CUDA 包也使用 CPU 推理验收；它只证明 CUDA 运行库打包后的 CPU 路径可用，不证明 GPU 路径通过。测试输出在 `artifacts`，打包版本/依赖/模型策略记录在 `build/<runtime>/metadata` 及发行目录。
 

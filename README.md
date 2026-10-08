@@ -38,7 +38,7 @@ pwsh -NoProfile -File ./build.ps1 -Runtime cu130 -Release
 
 `setup_environment.ps1 -Runtime cpu` 创建 CPU 环境；更换运行库时建议使用不同 venv，例如 `-Venv .ci-venv`。`build.ps1 -Python <解释器>` 可指定已有构建环境。构建入口核对安装的 Torch 与所选运行库，收集实际依赖版本和许可证，然后执行 PyInstaller。构建缓存放在项目 `.cache/pyinstaller/<runtime>`，每次构建清理 PyInstaller 缓存，避免重复构建沿用旧代码。
 
-输出为 `dist/<runtime>/UpscaleToolkit/`，`-Release` 额外生成 `UpscaleToolkit-<版本>-windows-x64-<runtime>.zip`、SHA-256 和 `release.json`。版本只维护 `upscale_toolkit/__init__.py` 的 `__version__`。公开包默认只有模型目录说明；需要包含已准备好的权重时，显式添加 `-IncludeModels`。
+输出为 `dist/<runtime>/UpscaleToolkit/`，`-Release` 额外生成 `UpscaleToolkit-<版本>-windows-x64-<runtime>.zip`、SHA-256 和 `release.json`。发行版本从 Git tag 生成，例如 `v1.2.3` 对应版本 `1.2.3`；本地构建可传入 `-Tag v1.2.3`。生成的 `upscale_toolkit/_version.py` 随应用及源码包交付，但不提交到 Git。未指定 tag 时沿用已有生成版本；没有生成版本的源码检出使用 `0.0.0.dev0`。公开包默认只有模型目录说明；需要包含已准备好的权重时，显式添加 `-IncludeModels`。
 
 无需 GPU 或真实权重的完整 CI 验收：
 
@@ -53,7 +53,16 @@ pwsh -NoProfile -File ./build.ps1 -Runtime cpu -Release -Verify -TestModelDir ./
 
 ## GitHub Actions
 
-[ci.yml](.github/workflows/ci.yml) 在 PR 和普通 push 上安装 CPU 环境，执行完整构建/验收并上传 ZIP、校验文件及诊断报告。`v*` 标签构建 CPU 与 cu130 两种包，并检查标签与应用版本一致；手动运行可选择其中一种或两种。公开工作流不使用私有模型、Forge、secrets 或有写权限的仓库 token，不自动发布 GitHub Release。
+[ci.yml](.github/workflows/ci.yml) 仅在推送 Git tag 时触发，普通分支 push、PR 和手动运行均不触发。tag 应为语义化版本，可带 `v` 前缀，例如 `v1.2.3`、`1.2.3` 或 `v1.3.0-rc.1`。无效版本 tag 会在安装构建依赖前失败。应用版本、构建记录和 ZIP 文件名均从 tag 生成，无需手动修改源码版本号。
+
+每个版本 tag 构建 CPU 与 cu130 两种包，两者完成验收后，使用该 tag 发布 GitHub Release，附带两份 ZIP、SHA-256 和各运行库的构建记录。带预发布标识的版本自动标为 Pre-release；正式版本由 GitHub 管理 Latest。附件上传完成后才公开发布，失败时保留草稿供重跑；已发布的同一 tag 不会重复创建或覆盖。
+
+构建任务保持只读权限，发布任务使用内置 `GITHUB_TOKEN` 的 `contents: write` 权限，无需配置个人访问令牌。发行包不包含模型权重。发布示例：
+
+```powershell
+git tag v1.2.3
+git push origin v1.2.3
+```
 
 实际 GPU 推理需在支持的显卡/驱动上另行验收。开发流程及验证边界见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 

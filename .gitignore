@@ -5,6 +5,7 @@ venv/
 .cache/
 __pycache__/
 *.py[cod]
+upscale_toolkit/_version.py
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

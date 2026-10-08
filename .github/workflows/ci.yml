@@ -2,21 +2,15 @@ name: Windows CI
 
 on:
   push:
-  pull_request:
-  workflow_dispatch:
-    inputs:
-      runtime:
-        description: 'Torch runtime to build (CUDA package is tested using CPU inference)'
-        type: choice
-        options: [cpu, cu130, both]
-        default: cpu
+    tags:
+      - '*'
 
 permissions:
   contents: read
 
 concurrency:
   group: windows-ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   windows:
@@ -26,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runtime: ${{ fromJSON((startsWith(github.ref, 'refs/tags/v') || inputs.runtime == 'both') && '["cpu","cu130"]' || inputs.runtime == 'cu130' && '["cu130"]' || '["cpu"]') }}
+        runtime: [cpu, cu130]
     defaults:
       run:
         shell: pwsh
@@ -34,7 +28,7 @@ jobs:
       PYTHONUTF8: '1'
       PYTHONDONTWRITEBYTECODE: '1'
       PIP_DISABLE_PIP_VERSION_CHECK: '1'
-      BUILD_TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+      BUILD_TAG: ${{ github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -46,6 +40,11 @@ jobs:
         with:
           python-version: '3.13'
           architecture: x64
+
+      - name: Generate application version from tag
+        run: |
+          python -B tools/release_support.py --tag $env:BUILD_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid release tag' }
 
       - name: Install build environment
         run: ./tools/setup_environment.ps1 -Python python -Runtime '${{ matrix.runtime }}'
@@ -82,3 +81,70 @@ jobs:
             build/${{ matrix.runtime }}/pyinstaller/UpscaleToolkit/warn-*.txt
           if-no-files-found: warn
           retention-days: 7
+
+  publish:
+    name: Publish tag release
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: windows
+    runs-on: windows-2022
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download packages from this run
+        shell: pwsh
+        run: |
+          gh run download $env:GITHUB_RUN_ID --pattern 'UpscaleToolkit-windows-x64-*' --dir packages
+          if ($LASTEXITCODE -ne 0) { throw 'Package download failed' }
+
+      - name: Upload assets and publish release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $assets = @()
+          $version = $null
+          foreach ($runtime in @('cpu', 'cu130')) {
+            $folder = Join-Path 'packages' "UpscaleToolkit-windows-x64-$runtime"
+            $report = Get-Content -LiteralPath (Join-Path $folder 'release.json') -Raw | ConvertFrom-Json
+            if ($version -and $version -ne $report.version) { throw 'Package versions differ' }
+            if ($report.runtime -ne $runtime -or $report.includes_models) { throw 'Unexpected package manifest' }
+            $version = $report.version
+            $archive = Join-Path $folder $report.archive
+            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $report.sha256) { throw 'Package checksum mismatch' }
+            $manifest = Join-Path 'packages' "release-$runtime.json"
+            Copy-Item -LiteralPath (Join-Path $folder 'release.json') -Destination $manifest
+            $assets += @($archive, "$archive.sha256", $manifest)
+          }
+          $tag = $env:GITHUB_REF_NAME
+          $tagVersion = $tag -creplace '^v', ''
+          if ($version -cne $tagVersion) { throw 'Package version does not match the release tag' }
+          $draft = gh release view $tag --json isDraft --jq '.isDraft' 2>$null
+          $exists = $LASTEXITCODE -eq 0
+          if ($exists -and $draft -eq 'false') {
+            Write-Output "Release $tag is already published."
+            exit 0
+          }
+          if (-not $exists) {
+            @(
+              "Release $tag for commit $env:GITHUB_SHA.",
+              '',
+              'Includes Windows x64 CPU and CUDA 13.0 packages, SHA-256 checksums and build manifests.',
+              'Model weights are not included. Place your models in the model folder.',
+              'Both packages passed CPU-based CI acceptance; GPU inference and image quality are not evaluated by this workflow.'
+            ) | Set-Content -LiteralPath release-notes.md -Encoding utf8
+            gh release create $tag --verify-tag --title "Upscale Toolkit $version" --notes-file release-notes.md --draft
+            if ($LASTEXITCODE -ne 0) { throw 'Release draft creation failed' }
+          }
+          gh release upload $tag @assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed; draft retained for retry' }
+          $prerelease = ($version -split '\+', 2)[0].Contains('-')
+          if ($prerelease) {
+            gh release edit $tag --draft=false --prerelease --latest=false
+          } else {
+            gh release edit $tag --draft=false --prerelease=false
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
